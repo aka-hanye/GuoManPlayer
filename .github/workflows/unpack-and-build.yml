@@ -1,46 +1,35 @@
-name: Unpack and Build GuoManPlayer
+name: Build GuoManPlayer APK
 
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  unpack-and-build:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find and unpack source ZIP
+      - name: Unpack Android source
         shell: bash
         run: |
           ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
           if [ -z "$ZIP" ]; then
-            echo "Source ZIP not found in repository root."
+            echo "Source ZIP not found"
             exit 1
           fi
           mkdir -p /tmp/guoman-source
           unzip -q "$ZIP" -d /tmp/guoman-source
           SETTINGS=$(find /tmp/guoman-source -name settings.gradle.kts -print -quit)
           if [ -z "$SETTINGS" ]; then
-            echo "settings.gradle.kts not found in ZIP."
+            echo "settings.gradle.kts not found"
             exit 1
           fi
           PROJECT_DIR=$(dirname "$SETTINGS")
-          cp -a "$PROJECT_DIR"/. .
-          rm -f "$ZIP"
-
-      - name: Commit extracted project
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Add GuoManPlayer Android source"
-            git push
-          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -56,14 +45,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Build APK
-        run: gradle assembleDebug
+        run: gradle -p "$PROJECT_DIR" assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: GuoManPlayer-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+
