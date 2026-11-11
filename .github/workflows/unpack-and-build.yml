@@ -9,6 +9,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,14 +21,14 @@ jobs:
         run: |
           ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
           if [ -z "$ZIP" ]; then
-            echo "Source ZIP not found"
+            echo "Source ZIP not found in repository root"
             exit 1
           fi
           mkdir -p /tmp/guoman-source
           unzip -q "$ZIP" -d /tmp/guoman-source
           SETTINGS=$(find /tmp/guoman-source -name settings.gradle.kts -print -quit)
           if [ -z "$SETTINGS" ]; then
-            echo "settings.gradle.kts not found"
+            echo "settings.gradle.kts not found in ZIP"
             exit 1
           fi
           PROJECT_DIR=$(dirname "$SETTINGS")
@@ -42,11 +45,19 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Accept Android SDK licenses and install packages
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)
+          fi
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $ANDROID_HOME"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build APK
         run: gradle -p "$PROJECT_DIR" assembleDebug
@@ -56,4 +67,5 @@ jobs:
         with:
           name: GuoManPlayer-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
